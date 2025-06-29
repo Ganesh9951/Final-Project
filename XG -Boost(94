@@ -1,0 +1,55 @@
+import os
+import zipfile
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import LabelEncoder
+from xgboost import XGBClassifier
+from sklearn.metrics import accuracy_score, classification_report
+
+# --- Step 1: Try to unzip file (if it's a real zip) ---
+zip_path = "/content/phishing_site_urls.csv (1).zip"
+csv_path = "/content/phishing_site_urls.csv (1).zip"
+
+# Check if it's a ZIP file and extract
+try:
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        zip_ref.extractall("/content/")
+        print("✅ File unzipped successfully.")
+except zipfile.BadZipFile:
+    print("⚠️ Not a zip file. Proceeding to read as CSV directly...")
+
+# --- Step 2: Load the CSV file ---
+# If unzipped, the CSV will be present in /content/
+if os.path.exists(csv_path):
+    df = pd.read_csv(csv_path)
+else:
+    df = pd.read_csv(zip_path)  # May work if it's actually just a CSV with a .zip extension
+
+print("✅ CSV loaded successfully.")
+print(df.head())
+
+# --- Step 3: Sample data to reduce memory usage ---
+df_sampled = df.sample(n=100000, random_state=42)
+
+# --- Step 4: TF-IDF vectorization of URL text ---
+vectorizer = TfidfVectorizer(max_features=5000, analyzer='char', ngram_range=(2, 5))
+X = vectorizer.fit_transform(df_sampled['URL'])
+
+# --- Step 5: Encode labels ('bad', 'good') into numbers ---
+label_encoder = LabelEncoder()
+y = label_encoder.fit_transform(df_sampled['Label'])
+
+# --- Step 6: Split data into train and test sets ---
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# --- Step 7: Train XGBoost model ---
+model = XGBClassifier(use_label_encoder=False, eval_metric='logloss', n_jobs=-1)
+model.fit(X_train, y_train)
+
+# --- Step 8: Make predictions and evaluate ---
+y_pred = model.predict(X_test)
+
+print("\n✅ Accuracy:", accuracy_score(y_test, y_pred))
+print("\n📊 Classification Report:\n")
+print(classification_report(y_test, y_pred, target_names=label_encoder.classes_))
